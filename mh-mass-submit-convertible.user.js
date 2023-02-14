@@ -1,32 +1,22 @@
 // ==UserScript==
 // @name         MouseHunt - Mass Convertible Submit
 // @version      1.0.0
-// @description  Add button to open/submit many convertibles one-by-one.
+// @description  Add button to open many convertibles one-by-one so MHCT can record singles.
 // @license      MIT
 // @author       Xellis
 // @namespace    https://github.com/hymccord
 // @match        https://www.mousehuntgame.com/*
 // @grant        none
-// @icon         🦊
+// @icon         https://www.mousehuntgame.com/images/mice/square/6b9bd6acb4a07d560f61e5678e4ff3b5.jpg
 // @run-at       document-end
 // ==/UserScript==
 
 /* global $, hg, eventRegistry */
 'use strict';
 
-function queueReloadAfterDialogClose(itemType) {
-    eventRegistry.addEventListener('js_dialog_hide', function () {
-        setTimeout(function () {
-            hg.utils.UserInventory.getItem(itemType, function (item) {
-                if ((item && item.quantity > 0) || hg.utils.PageUtil.getCurrentPage() == 'Item') {
-                    hg.views.ItemView.show(item.type);
-                }
-            });
-        }, 100);
-    }, null, true);
-}
+let progressNode = null;
 
-function submitOneByOne(element) {
+function useConvertibleOneByOne (element) {
     var target = $(element);
     if (target.hasClass('busy')) {
         return false;
@@ -39,21 +29,26 @@ function submitOneByOne(element) {
         return;
     }
 
-    if (quantityToOpen > 5) {
-        quantityToOpen = 5
-    }
+    // debug limit
+    //if (quantityToOpen > 5) {
+    //    quantityToOpen = 5
+    //}
+
     target.addClass('busy');
+    addProgressText();
+    setProgressText(0, quantityToOpen);
 
     let aggregatedItemData = [];
     let convertibleBaseData = null;
-    let quantityLeftToOpen = quantityToOpen;
+    let quantityOpened = 0;
 
     var openItem = function() {
         hg.utils.UserInventory.useConvertible(itemType, 1, completionCallback, errorCallback);
     }
 
     var completionCallback = function (data) {
-        quantityLeftToOpen -= 1;
+        quantityOpened += 1;
+        setProgressText(quantityOpened, quantityToOpen);
 
         if (!data.convertible_open) {
             return;
@@ -67,9 +62,12 @@ function submitOneByOne(element) {
         // aggregate items
         aggregatedItemData.push(...data.convertible_open.items);
 
-        if (quantityLeftToOpen > 0) {
+        if (quantityOpened < quantityToOpen) {
             openItem();
-        } else if (quantityLeftToOpen == 0) {
+        }
+
+        if (quantityOpened == quantityToOpen) {
+            removeProgressText();
             showAggregatedData();
         }
     }
@@ -86,20 +84,22 @@ function submitOneByOne(element) {
         queueReloadAfterDialogClose(itemType);
     }
 
+    const queueReloadAfterDialogClose = function (itemType) {
+        eventRegistry.addEventListener('js_dialog_hide', function () {
+            setTimeout(function () {
+                hg.utils.UserInventory.getItem(itemType, function (item) {
+                    if ((item && item.quantity > 0) || hg.utils.PageUtil.getCurrentPage() == 'Item') {
+                        hg.views.ItemView.show(item.type);
+                    }
+                });
+            }, 100);
+        }, null, true);
+    }
+
     openItem();
 }
 
-/**
-* Return a node with links after grabbing the item ID and name from the page.
-*
-* @param {Object} args       Arguments to use for the links.
-* @param {string} args.id    CSS selector for the item ID.
-* @param {string} args.name  CSS selector for the item name.
-* @param {string} args.class CSS class to add to the node.
-*
-* @return {false|string} False if no item ID or name found, otherwise HTML for links.
-*/
-const getMassSubmitNode = (args) => {
+function getMassSubmitNode (args) {
     const itemInfo = document.querySelector(args.id);
     if (! itemInfo) {
         return false;
@@ -115,10 +115,11 @@ const getMassSubmitNode = (args) => {
     submitButton.classList.add('small');
     submitButton.classList.add('itemView-action-convert-actionButton');
     submitButton.href = '#';
-    submitButton.onclick = 'return false';
 
-    $(submitButton).click((e) => submitOneByOne(e.currentTarget));
-    //submitButton.addEventListener('click', () => testFunction(itemInfo), false);
+    $(submitButton).click((e) => {
+        e.preventDefault();
+        useConvertibleOneByOne(e.currentTarget);
+    });
 
     const text = document.createElement('span');
     text.innerText = 'Submit 1-by-1';
@@ -127,6 +128,15 @@ const getMassSubmitNode = (args) => {
 
     return submitButton;
 };
+
+function getProgressNode () {
+    const newText = document.createElement('span');
+    newText.id = 'mass-submit-convertible-progress';
+    newText.style.padding = '5px 10px';
+    newText.innerText = 'Progress: 0 / 0';
+    return newText;
+}
+
 /**
 * Append text to a node, either before or after another node.
 *
@@ -137,7 +147,7 @@ const getMassSubmitNode = (args) => {
 *
 * @return {Node} The node that was appended to.
 */
-const appendText = (args) => {
+function appendText (args) {
     const append = document.querySelector(args.parent);
     if (! append) {
         return false;
@@ -162,6 +172,34 @@ function addItemButton() {
             id: '.itemViewContainer'
         })
     });
+}
+
+function addProgressText() {
+    if (progressNode != null) {
+        return;
+    }
+    progressNode = getProgressNode();
+    appendText({
+        parent: '.itemView-action-convertForm',
+        content: progressNode
+    });
+}
+
+function setProgressText(current, max) {
+    if (progressNode == null) {
+        return;
+    }
+
+    $(progressNode).text(`Progress: ${current} / ${max}`);
+}
+
+function removeProgressText() {
+    if (progressNode == null) {
+        return
+    }
+
+    $(progressNode).remove();
+    progressNode = null;
 }
 
 $(document).ajaxSuccess((e, xhr, options) => {
