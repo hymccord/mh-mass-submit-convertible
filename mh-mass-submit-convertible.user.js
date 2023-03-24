@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         MouseHunt - Mass Convertible Submit
-// @version      1.0.0
+// @version      2.0.0
 // @description  Add button to open many convertibles one-by-one so MHCT can record singles.
 // @license      MIT
 // @author       Xellis
@@ -22,6 +22,7 @@ function useConvertibleOneByOne (element) {
         return false;
     }
 
+    // Get the amount to open and verify it's a good number
     const container = target.parents('.itemViewContainer');
     var quantityToOpen = +$('.itemView-action-convert-quantity', container).val();
     const itemType = container.data('itemType');
@@ -34,8 +35,11 @@ function useConvertibleOneByOne (element) {
     //    quantityToOpen = 5
     //}
 
-    target.addClass('busy');
+    removeSubmitButton();
+    //target.addClass('busy');
     addProgressText();
+    const nextBtn = addNextButton();
+    const finishBtn = addFinishButton();
     setProgressText(0, quantityToOpen);
 
     let aggregatedItemData = [];
@@ -62,14 +66,22 @@ function useConvertibleOneByOne (element) {
         // aggregate items
         aggregatedItemData.push(...data.convertible_open.items);
 
-        if (quantityOpened < quantityToOpen) {
-            openItem();
-        }
+        // No automation
+        // if (quantityOpened < quantityToOpen) {
+        //     openItem();
+        // }
+        $(nextBtn).removeClass('busy');
 
         if (quantityOpened == quantityToOpen) {
-            removeProgressText();
-            showAggregatedData();
+            finishOpening();
         }
+    }
+
+    var finishOpening = function() {
+        removeProgressText();
+        showAggregatedData();
+        removeNextButton();
+        removeFinishButton();
     }
 
     var errorCallback = function () {
@@ -96,7 +108,34 @@ function useConvertibleOneByOne (element) {
         }, null, true);
     }
 
+    $(nextBtn).click((e) => {
+        e.preventDefault();
+        $(nextBtn).addClass('busy');
+        openItem();
+    });
+
+    $(finishBtn).click((e) => {
+        e.preventDefault();
+        finishOpening();
+    });
+
     openItem();
+}
+
+function createActionButton(id, text) {
+    const button = document.createElement('a');
+    button.id = id;
+    button.classList.add('mousehuntActionButton');
+    button.classList.add('small');
+    button.classList.add('itemView-action-convert-actionButton');
+    button.href = '#';
+
+    const span = document.createElement('span');
+    span.innerText = text;
+
+    button.appendChild(span);
+
+    return button;
 }
 
 function getMassSubmitNode (args) {
@@ -110,24 +149,25 @@ function getMassSubmitNode (args) {
         return false;
     }
 
-    const submitButton = document.createElement('a');
-    submitButton.classList.add('mousehuntActionButton');
-    submitButton.classList.add('small');
-    submitButton.classList.add('itemView-action-convert-actionButton');
-    submitButton.href = '#';
+    const submitButton = createActionButton('xel-mass-submit-btn', 'Submit 1-by-1');
 
     $(submitButton).click((e) => {
         e.preventDefault();
         useConvertibleOneByOne(e.currentTarget);
     });
 
-    const text = document.createElement('span');
-    text.innerText = 'Submit 1-by-1';
-
-    submitButton.appendChild(text);
-
     return submitButton;
 };
+
+function getNextNode(args) {
+    const next = createActionButton('xel-mass-next-btn', 'Next');
+    return next;
+}
+
+function getFinishNode(args) {
+    const finish = createActionButton('xel-mass-finish-btn', 'Finish');
+    return finish;
+}
 
 function getProgressNode () {
     const newText = document.createElement('span');
@@ -165,13 +205,22 @@ function appendText (args) {
     return false;
 };
 
-function addItemButton() {
+function addSubmitButton() {
     appendText({
         parent: '.itemView-action-convertForm',
         content: getMassSubmitNode({
             id: '.itemViewContainer'
         })
     });
+}
+
+function removeSubmitButton() {
+    const button = document.getElementById('xel-mass-submit-btn');
+    if (!button) {
+        return;
+    }
+
+    button.remove();
 }
 
 function addProgressText() {
@@ -202,14 +251,50 @@ function removeProgressText() {
     progressNode = null;
 }
 
+function addNextButton() {
+    const nextNode = getNextNode();
+    appendText({
+        parent: '.itemView-action-convertForm',
+        content: nextNode
+    });
+    return nextNode;
+}
+
+function removeNextButton() {
+    const element = document.getElementById('xel-mass-next-btn');
+    if (!element) {
+        return;
+    }
+
+    element.remove();
+}
+
+function addFinishButton() {
+    const finishNode = getFinishNode();
+    appendText({
+        parent: '.itemView-action-convertForm',
+        content: finishNode
+    });
+    return finishNode;
+}
+
+function removeFinishButton() {
+    const element = document.getElementById('xel-mass-finish-btn');
+    if (!element) {
+        return;
+    }
+
+    element.remove();
+}
+
 $(document).ajaxSuccess((e, xhr, options) => {
     const url = options.url;
     if (url.indexOf('managers/ajax/users/userInventory.php') !== -1) {
-        addItemButton();
+        addSubmitButton();
     }
 });
 
 if (window.location.href.indexOf('item.php') !== -1 ||
     window.location.href.indexOf('/i.php') !== -1 ) {
-    addItemButton();
+    addSubmitButton();
 }
